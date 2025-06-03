@@ -1,24 +1,25 @@
 import streamlit as st
-import chromadb
-from openai import OpenAI
 import os
+import json
 from dotenv import load_dotenv
+from openai import OpenAI
+from pinecone import Pinecone
 
-
+# Load environment variables
 load_dotenv()
 
 # ---- CONFIG ----
-CHROMA_DB_DIR = "data/chroma_db"
-COLLECTION_NAME = "events"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")  # Ensure this is set in your .env file
 
 # ---- INIT ----
-# Connect to ChromaDB
-client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
-collection = client.get_collection(name=COLLECTION_NAME)
-
 # Initialize OpenAI Client
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+  
+# Initialize Pinecone Client
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index = pc.Index(PINECONE_INDEX_NAME)
 
 # ---- Helper Functions ----
 def generate_query_embedding(text):
@@ -63,9 +64,7 @@ def extract_intent_from_query(user_query):
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
-    import json
     return json.loads(response.choices[0].message.content.strip())
-
 
 # ---- Streamlit Custom Styling ----
 st.set_page_config(page_title="Event Finder", page_icon="📅", layout="wide")
@@ -125,36 +124,27 @@ if query:
         # 3. Generate embedding for enhanced query
         query_embedding = generate_query_embedding(enhanced_query)
 
-        # 4. Query ChromaDB
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=9
+        # 4. Query Pinecone
+        results = index.query(
+            vector=query_embedding,
+            top_k=9,
+            include_metadata=True
         )
 
-        documents = results.get("documents", [])[0]
-        metadatas = results.get("metadatas", [])[0]
+        matches = results.get("matches", [])
 
-        query_embedding = generate_query_embedding(query)
-
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=9  # 9 for better 3x3 layout
-        )
-
-        documents = results.get("documents", [])[0]
-        metadatas = results.get("metadatas", [])[0]
-
-        if documents:
-            st.success(f"Found {len(documents)} matching events! 🎯")
+        if matches:
+            st.success(f"Found {len(matches)} matching events! 🎯")
 
             # Display results: 3 cards per row
-            for row_idx in range(0, len(documents), 3):
+            for row_idx in range(0, len(matches), 3):
                 cols = st.columns(3)
 
                 for i in range(3):
-                    if row_idx + i < len(documents):
-                        doc = documents[row_idx + i]
-                        meta = metadatas[row_idx + i]
+                    if row_idx + i < len(matches):
+                        match = matches[row_idx + i]
+                        meta = match.get("metadata", {})
+                        doc = meta.get("description", "No Description")
 
                         with cols[i]:
                             st.markdown(
