@@ -8,7 +8,7 @@
 - **Scrape real-world event data** from Eventbrite across multiple categories.
 - **Preprocess and enrich event information** with tags like mood, theme, genre.
 - **Embed events into a vector database** using OpenAI embeddings.
-- **Enable a natural language and intent-based search interface** powered by Streamlit, ChromaDB, and OpenAI LLMs (GPT-3.5/4).
+- **Enable a natural language and intent-based search interface** powered by Streamlit, Pinecone, and OpenAI LLMs (GPT-3.5/4).
 - **Summarize and recommend** events dynamically based on user queries.
 
 ---
@@ -21,7 +21,7 @@
 | aiohttp + BeautifulSoup | Web Scraping |
 | Selenium (Headless Chrome) | Dynamic JavaScript Tag Extraction |
 | OpenAI API | Text Embedding Generation + LLM Summarization |
-| ChromaDB | Vector Database for Semantic Retrieval |
+| Pinecone | Vector Database for Semantic Retrieval |
 | Streamlit | Frontend UI for Search and Interaction |
 
 ---
@@ -38,7 +38,7 @@ EventFinder/
 │
 ├── preprocessing/
 │   ├── preprocess.py           # Cleans and standardizes event data
-│   └── vector_embedding.py     # Embeds events into ChromaDB
+│   └── vector_embedding.py     # Embeds events into Pinecone
 │
 ├── scraper/
 │   ├── scraper.py              # Scrapes event data (title, about, etc.)
@@ -82,7 +82,7 @@ Sample `requirements.txt`:
 aiohttp
 beautifulsoup4
 selenium
-chromadb
+Pinecone
 openai
 python-dotenv
 streamlit
@@ -135,13 +135,13 @@ python preprocessing/preprocess.py
 
 ---
 
-### Step 4: Generate Embeddings and Insert into ChromaDB
+### Step 4: Generate Embeddings and Insert into Pinecone
 
 ```bash
 python preprocessing/vector_embedding.py
 ```
 
-- Embeds event metadata using OpenAI embeddings and stores them in a persistent ChromaDB instance.
+- Embeds event metadata using OpenAI embeddings and stores them in a persistent Pinecone instance.
 
 ---
 
@@ -172,7 +172,7 @@ streamlit run app/main.py
 | Scrape events from multiple categories | ✅ |
 | Extract tags dynamically using Selenium | ✅ |
 | Preprocess, clean, and deduplicate events | ✅ |
-| Embed events into ChromaDB with OpenAI embeddings | ✅ |
+| Embed events into Pinecone with OpenAI embeddings | ✅ |
 | Semantic search by user queries | ✅ |
 | Tag-based filtering for finer search control | ✅ |
 | LLM-based event summarization and personalization | ✅ |
@@ -202,7 +202,7 @@ streamlit run app/main.py
 ## 🙌 Acknowledgments
 
 - [OpenAI](https://openai.com/) for embedding and LLM APIs.
-- [ChromaDB](https://docs.trychroma.com/) team for building a high-speed vector database.
+- [Pinecone](https://docs.trychroma.com/) team for building a high-speed vector database.
 - [Streamlit](https://streamlit.io/) community for frontend development tools.
 - [Eventbrite](https://eventbrite.com/) for providing public access to event data.
 
