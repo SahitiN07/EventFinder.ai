@@ -1,8 +1,8 @@
 import json
-import chromadb
 import os
 import time
 import openai
+from pinecone import Pinecone, ServerlessSpec
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -10,16 +10,27 @@ load_dotenv()
 
 # ---- CONFIG ----
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_REGION = os.getenv("PINECONE_REGION")  # e.g., 'us-east-1'
+INDEX_NAME = "events-index"
 EVENTS_FILE = "data/events_cleaned.json"
-CHROMA_DB_DIR = "data/chroma_db"
-COLLECTION_NAME = "events"
-BATCH_SIZE = 10  # <--- Number of documents to batch in one call
+BATCH_SIZE = 10
 
 # ---- INIT ----
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
-collection = client.get_or_create_collection(name=COLLECTION_NAME)
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Create index if not exists
+if INDEX_NAME not in pc.list_indexes().names():
+    pc.create_index(
+        name=INDEX_NAME,
+        dimension=1536,
+        metric="cosine",
+        spec=ServerlessSpec(cloud="aws", region=PINECONE_REGION)
+    )
+
+index = pc.Index(INDEX_NAME)
 
 # ---- LOAD EVENTS ----
 with open(EVENTS_FILE, "r", encoding="utf-8") as f:
@@ -28,9 +39,7 @@ with open(EVENTS_FILE, "r", encoding="utf-8") as f:
 print(f"Loaded {len(events)} events.")
 
 # ---- PREPARE ----
-ids = []
-documents = []
-metadatas = []
+ids, documents, metadatas = [], [], []
 
 for idx, event in enumerate(events):
     title = event.get("title", "No Title")
@@ -40,7 +49,6 @@ for idx, event in enumerate(events):
     tags = event.get("tags", "")
     event_link = event.get("event_link", "")
 
-    # ENRICH FULL TEXT
     full_text = (
         f"Event Title: {title}. "
         f"Event Date and Time: {date_time}. "
@@ -59,7 +67,7 @@ for idx, event in enumerate(events):
         "link": event_link
     })
 
-# ---- EMBEDDING FUNCTION (with batch support) ----
+# ---- EMBEDDING FUNCTION ----
 def generate_embeddings(texts, retries=5):
     for attempt in range(retries):
         try:
@@ -70,15 +78,15 @@ def generate_embeddings(texts, retries=5):
             return [r.embedding for r in response.data]
         except openai.RateLimitError:
             wait_time = (2 ** attempt) * 0.5
-            print(f"Rate limit hit. Waiting {wait_time:.1f} seconds before retrying...")
+            print(f"Rate limit hit. Waiting {wait_time:.1f}s before retry...")
             time.sleep(wait_time)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Embedding error: {e}")
             raise e
     raise Exception("Failed after retries.")
 
-# ---- BATCH PROCESSING ----
-print(f"Starting embedding generation with batch size {BATCH_SIZE}...")
+# ---- BATCH UPLOAD ----
+print(f"Starting upload to Pinecone with batch size {BATCH_SIZE}...")
 
 for batch_start in range(0, len(documents), BATCH_SIZE):
     batch_end = min(batch_start + BATCH_SIZE, len(documents))
@@ -88,14 +96,13 @@ for batch_start in range(0, len(documents), BATCH_SIZE):
 
     batch_embeddings = generate_embeddings(batch_docs)
 
-    collection.add(
-        documents=batch_docs,
-        embeddings=batch_embeddings,
-        metadatas=batch_metas,
-        ids=batch_ids
-    )
+    pinecone_vectors = [
+        (id_, embedding, metadata)
+        for id_, embedding, metadata in zip(batch_ids, batch_embeddings, batch_metas)
+    ]
 
-    print(f"Embedded events {batch_start} to {batch_end} ✅")
-    time.sleep(0.5)  # Light sleep between batches (can tune)
+    index.upsert(vectors=pinecone_vectors)
+    print(f"Upserted events {batch_start} to {batch_end} ✅")
+    time.sleep(0.5)
 
-print(f"All {len(documents)} events inserted into ChromaDB at '{CHROMA_DB_DIR}' 🚀")
+print(f"All {len(documents)} events inserted into Pinecone index '{INDEX_NAME}' 🚀")
